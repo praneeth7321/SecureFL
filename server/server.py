@@ -17,8 +17,8 @@ from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 from torch.utils.data import DataLoader
 
-from aggregation.secure_aggregation import aggregate_updates
-from detection.krum import select_suspicious_client
+from aggregation.secure_aggregation import aggregate_selected_updates
+from detection.krum import select_krum_clients
 from evaluation import metrics
 from models.cnn_model import CNNModel
 
@@ -93,20 +93,41 @@ class SecureFLStrategy(FedAvg):
             for _, fit_result in results
         ]
 
-        print("\nRunning Krum...")
-        rejected_index = select_suspicious_client(
+      
+        print("\nRunning Multi-Krum-style selection...")
+        selected_indices = select_krum_clients(
             updates,
             num_malicious=self.num_malicious,
         )
-        rejected_client_id = results[rejected_index][0].cid
-        print(f"\nRejected Client : {rejected_client_id}")
 
-        print("\nAggregating Accepted Updates...")
-        aggregated_updates = aggregate_updates(updates, rejected_index)
+        excluded_indices = [
+            index
+            for index in range(len(results))
+            if index not in selected_indices
+        ]
+
+        excluded_client_ids = [
+            results[index][0].cid for index in excluded_indices
+        ]
+        selected_client_ids = [
+            results[index][0].cid for index in selected_indices
+        ]
+
+        print(f"Selected client updates: {selected_client_ids}")
+        print(f"Excluded client updates: {excluded_client_ids}")
+
+        print("\nAggregating Selected Updates...")
+        aggregated_updates = aggregate_selected_updates(
+            updates,
+            selected_indices,
+        )
         aggregated_parameters = ndarrays_to_parameters(aggregated_updates)
         self._set_model_parameters(aggregated_updates)
 
-        training_loss = self._calculate_training_loss(results, rejected_index)
+        training_loss = self._calculate_training_loss(
+            results,
+            selected_indices,
+        )
         clean_accuracy = metrics.calculate_clean_accuracy(
             self.global_model,
             self.test_loader,
@@ -123,7 +144,7 @@ class SecureFLStrategy(FedAvg):
         self.round_history.append(
             {
                 "round": server_round,
-                "rejected_client_id": rejected_client_id,
+                "rejected_client_id": ", ".join(excluded_client_ids),
                 "clean_accuracy": clean_accuracy,
                 "training_loss": training_loss,
                 "asr": attack_success_rate,
@@ -131,8 +152,16 @@ class SecureFLStrategy(FedAvg):
         )
 
         print("\nGlobal Model Updated")
-        print(f"\nClean Accuracy : {clean_accuracy * 100:.2f} %")
-        print(f"\nAttack Success Rate : {attack_success_rate * 100:.2f} %")
+        print(f"Clean Accuracy: {clean_accuracy * 100:.2f}%")
+        print(f"Attack Success Rate: {attack_success_rate * 100:.2f}%")
+
+        return aggregated_parameters, {
+            "train_loss": training_loss,
+            "clean_accuracy": clean_accuracy,
+            "asr": attack_success_rate,
+            "rejected_client_id": ", ".join(excluded_client_ids),
+        }
+
 
         return aggregated_parameters, {
             "train_loss": training_loss,
@@ -171,28 +200,31 @@ class SecureFLStrategy(FedAvg):
         )
         self.global_model.load_state_dict(updated_state, strict=True)
 
+   
     @staticmethod
     def _calculate_training_loss(
         results: list[tuple[ClientProxy, FitRes]],
-        rejected_index: int,
+        selected_indices: list[int],
     ) -> float:
-        """Return the accepted clients' example-weighted training loss."""
-        accepted_results = [
-            fit_result
-            for client_index, (_, fit_result) in enumerate(results)
-            if client_index != rejected_index
+        """Return example-weighted training loss for selected clients."""
+        selected_results = [
+            results[index][1] for index in selected_indices
         ]
-        total_examples = sum(result.num_examples for result in accepted_results)
+        total_examples = sum(result.num_examples for result in selected_results)
+
         if total_examples == 0:
-            raise ValueError("Accepted client updates must contain examples.")
+            raise ValueError("Selected client updates must contain examples.")
 
         weighted_loss = 0.0
-        for fit_result in accepted_results:
+        for fit_result in selected_results:
             if "train_loss" not in fit_result.metrics:
-                raise ValueError("Client training metrics must include train_loss.")
+                raise ValueError(
+                    "Client training metrics must include train_loss."
+                )
             weighted_loss += (
                 float(fit_result.metrics["train_loss"])
                 * fit_result.num_examples
             )
 
         return weighted_loss / total_examples
+
