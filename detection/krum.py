@@ -59,10 +59,27 @@ def compute_krum_scores(
     return scores
 
 
-def select_suspicious_client(
+def select_krum_clients(
     updates: list[list[np.ndarray]],
     num_malicious: int = 1,
-) -> int:
+    num_selected: int | None = None,
+) -> list[int]:
+    """Select the lowest-scoring client updates for robust aggregation."""
+    scores = compute_krum_scores(updates, num_malicious)
+
+    if num_selected is None:
+        num_selected = len(updates) - num_malicious
+
+    if not 1 <= num_selected <= len(updates) - num_malicious:
+        raise ValueError(
+            "num_selected must be between 1 and "
+            "len(updates) - num_malicious."
+        )
+
+    return [
+        int(index)
+        for index in np.argsort(scores)[:num_selected]
+    ]
     """Return the highest-score update for filtering, not client detection.
 
     Krum is a robust aggregation method. This project uses the highest Krum
