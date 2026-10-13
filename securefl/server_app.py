@@ -35,7 +35,7 @@ def server_fn(context: Context) -> ServerAppComponents:
 
     return ServerAppComponents(
     strategy=strategy,
-    server_config=ServerConfig(num_rounds=num_rounds),
+    config=ServerConfig(num_rounds=num_rounds),
 )
 
 
