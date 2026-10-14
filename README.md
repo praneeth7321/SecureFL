@@ -1,239 +1,179 @@
-# SecureFL: Detecting Backdoor Attacks using Federated Learning
+# SecureFL — Detecting Backdoor Attacks in Federated Learning
+
+SecureFL is a student project prototype that demonstrates a backdoor attack in a federated learning simulation and explores a Krum-style robust aggregation defense.
 
 ## Project Overview
 
-SecureFL is a command-line Python application that demonstrates how a backdoor attack can affect a Federated Learning (FL) system and how Krum-based robust aggregation can reduce the impact of an unusual client update.
+Federated learning lets multiple clients train a shared model while keeping their raw training data local. However, a malicious client may poison its local training data so that inputs containing a trigger are classified as a chosen target label.
 
-The project trains one shared Convolutional Neural Network (CNN) on the MNIST handwritten-digit dataset through Flower. Five simulated clients participate in every training round: four honest clients and one malicious client. The malicious client inserts a small white-square trigger into some of its local MNIST images and changes their labels to a configurable target digit.
+SecureFL simulates five clients:
+- Four intended honest clients
+- One configured malicious client
+- A white-square trigger used for backdoor poisoning
+- A server-side Krum-style update-selection step before aggregation
 
-The server applies Krum scoring to the received client model updates, rejects the least-consistent update for that round, averages the remaining updates, and evaluates the updated global model.
+The prototype evaluates model performance using clean accuracy and Attack Success Rate (ASR) across five communication rounds.
 
-## Problem Statement
+> **Research note:** This is a prototype. Krum-style selection is a heuristic in this implementation, and a low ASR by itself does not prove the defense caused the result. Compare against an undefended baseline before making effectiveness claims.
 
-Federated Learning allows multiple clients to train a shared model without pooling their raw data on one central server. However, a malicious participant can poison its local training data so that the global model behaves normally on clean data but predicts an attacker-chosen label when a visual trigger is present.
+## Features
 
-This project studies that targeted backdoor threat on MNIST and demonstrates a simple Krum-based robust aggregation defense.
+- Federated learning simulation using Flower
+- CNN training on MNIST
+- Five simulated clients
+- Trigger-based data poisoning by a malicious client
+- Krum-style scoring and update selection
+- Clean accuracy and ASR reporting
+- Round-by-round logs and generated graphs
+- Streamlit dashboard for presenting results
 
-## Objectives
-
-- Simulate Federated Learning with Flower 1.33 and five clients.
-- Train a simple PyTorch CNN on client-partitioned MNIST data.
-- Create a targeted backdoor attack using a small white-square image trigger.
-- Use Krum to score client model updates by their consistency with other updates.
-- Reject the least-consistent update and aggregate the remaining accepted updates.
-- Measure clean test accuracy, training loss, attack success rate (ASR), and the rejected client ID.
-- Save accuracy and ASR graphs for each training run.
-
-## System Architecture
-
-```text
-                         +-----------------------+
-                         |    Flower Server      |
-                         | Global CNN + Krum +   |
-                         | Filtered Aggregation  |
-                         +-----------+-----------+
-                                     |
-                         Global CNN model weights
-                                     |
-          +--------------------------+--------------------------+
-          |             |             |             |          |
-          v             v             v             v          v
-     Client 0      Client 1      Client 2      Client 3     Client 4
-      Honest        Honest        Honest        Honest      Malicious
-          |             |             |             |          |
-      Clean MNIST   Clean MNIST   Clean MNIST   Clean MNIST  Clean + poisoned
-          |             |             |             |       MNIST with trigger
-          +-------------+-------------+-------------+----------+
-                                     |
-                         Local CNN model updates
-                                     |
-                         +-----------v-----------+
-                         | Krum scores updates    |
-                         | Reject one update      |
-                         | Average accepted four  |
-                         +-----------+-----------+
-                                     |
-                              Updated global CNN
-                                     |
-                    Clean accuracy, loss, ASR, graphs
-```
-
-## Folder Structure
+## Project Structure
 
 ```text
 SecureFL/
-├── models/
-├── datasets/
-├── clients/
-├── attacks/
-├── detection/
 ├── aggregation/
-├── server/
+│   └── secure_aggregation.py
+├── attacks/
+├── clients/
+│   ├── client.py
+│   └── malicious_client.py
+├── datasets/
+│   └── load_data.py
+├── detection/
+│   └── krum.py
 ├── evaluation/
 ├── graphs/
-│   ├── accuracy_vs_round.png
-│   └── asr_vs_round.png
+├── models/
+│   └── cnn_model.py
+├── server/
+│   └── server.py
+├── securefl/
+│   ├── client_app.py
+│   └── server_app.py
+├── dashboard.py
 ├── main.py
+├── pyproject.toml
 ├── requirements.txt
 └── README.md
 ```
 
-## Technologies Used
+*The exact files may vary as the project evolves.*
 
-- Python 3.14
-- Flower 1.33 for Federated Learning simulation
-- PyTorch for CNN training
-- torchvision MNIST for dataset download and preprocessing
-- NumPy for numerical update processing
-- Pandas for round-level experiment records
-- Scikit-learn for permitted evaluation support
-- Matplotlib for accuracy and ASR graphs
+## Requirements
 
-## Installation Steps
+- Windows, macOS, or Linux
+- Python 3.11 recommended for the current environment
+- Git (optional, for version control)
+- Internet connection for installing dependencies and downloading MNIST on first run
 
-1. Open a terminal in the `SecureFL` project folder.
-2. Confirm that Python 3.14 is available:
+## Setup on Windows (PowerShell)
 
-   ```powershell
-   python --version
-   ```
+Open a terminal in the project root (the folder containing `main.py`).
 
-3. Create and activate a virtual environment:
-
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   ```
-
-4. Install the pinned project dependencies:
-
-   ```powershell
-   python -m pip install --upgrade pip
-   python -m pip install -r requirements.txt
-   ```
-
-## How to Run
-
-Run the project from the root `SecureFL` directory:
+### 1. Create a virtual environment
 
 ```powershell
-python main.py
+py -3.11 -m venv .venv
 ```
 
-The first run downloads the MNIST dataset through torchvision. The program then runs the configured number of federated training rounds and saves graphs in the `graphs/` folder.
+### 2. Install project dependencies
 
-## Workflow
+Activate the environment if PowerShell permits it:
 
-```text
-Initialize Flower Server
-        ↓
-Create 5 Clients
-        ↓
-Distribute Global CNN
-        ↓
-Honest Clients Train
-        ↓
-Malicious Client Injects Trigger
-        ↓
-Clients Send Updates
-        ↓
-Server Runs Krum
-        ↓
-Reject Suspicious Update
-        ↓
-Aggregate Remaining Updates
-        ↓
-Update Global Model
-        ↓
-Evaluate Accuracy & ASR
-        ↓
-Save Graphs
+```powershell
+.\.venv\Scripts\Activate.ps1
 ```
 
-## Krum Explanation
+If activation is blocked, you can use the environment's Python executable directly:
 
-Krum is a robust aggregation algorithm, not a malicious-client detector. It computes scores for client updates using pairwise distances and selects updates that are most consistent with the majority.
-
-In this project, the server calculates a Krum score for each of the five submitted model updates. The update with the least-consistent score is rejected before aggregation, while the other four updates are averaged. For evaluation purposes, the rejected update is treated as the suspected malicious update and compared with the known malicious client, Client 4.
-
-Therefore, a rejected Client 4 is a successful defensive indication in this controlled simulation, but Krum itself does not prove that a client is malicious.
-
-## Backdoor Attack Explanation
-
-The malicious client, Client 4, performs a targeted data-poisoning attack during its local training:
-
-1. It selects a configurable fraction of its MNIST training images.
-2. It adds a small white square to a fixed corner of each selected image.
-3. It changes each selected image label to a configurable target class, such as digit `0`.
-4. It trains on a mixture of clean and poisoned images.
-
-The goal is for the global model to retain useful clean-digit accuracy while classifying triggered images as the target label.
-
-## Robust Aggregation using Krum
-
-The server uses Krum scores to identify the update that is least consistent with the other client updates in the current round. It rejects that selected update and averages only the remaining four accepted updates to produce the next global model.
-
-This is a simplified robust aggregation process intended to limit the influence of an unusual update. It does not use encryption or Flower SecAgg/SecAgg+.
-
-## Evaluation Metrics
-
-- **Clean Accuracy:** Percentage of clean MNIST test images classified correctly by the global CNN.
-- **Training Loss:** The loss reported from local client training for each federated round.
-- **Attack Success Rate (ASR):** Percentage of triggered test images classified as the attacker’s configured target label.
-- **Rejected Client ID:** The client update rejected by Krum in that round, compared with the known malicious client ID, `4`.
-
-## Expected Output
-
-The console prints clear progress logs for every round, including client roles, local training completion, Krum processing, the rejected client ID, clean accuracy, and ASR. A typical round summary is:
-
-```text
-====================================================
-Round 1
-====================================================
-
-Client 0 : Honest
-Training Completed
-
-Client 1 : Honest
-Training Completed
-
-Client 2 : Honest
-Training Completed
-
-Client 3 : Honest
-Training Completed
-
-Client 4 : Malicious
-Trigger Injection Performed
-
-Receiving Client Updates...
-
-Running Krum...
-
-Rejected Client : 4
-
-Aggregating Honest Updates...
-
-Global Model Updated
-
-Clean Accuracy : xx.xx %
-
-Attack Success Rate : xx.xx %
-====================================================
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-After training, the application saves only these graphs:
+Install dashboard dependencies:
 
-```text
-graphs/accuracy_vs_round.png
-graphs/asr_vs_round.png
+```powershell
+.\.venv\Scripts\python.exe -m pip install streamlit pandas altair
 ```
 
-## Future Improvements
+## Run the simulation
 
-- Compare Krum with FedAvg, Median, Trimmed Mean, and Multi-Krum.
-- Support different trigger positions, shapes, and target classes.
-- Experiment with IID and non-IID client data partitions.
-- Evaluate different poison ratios and multiple malicious clients.
-- Add cryptographic secure aggregation as a separate, advanced extension.
-- Save experiment configurations and round metrics for repeated comparisons.
+From the project root:
+
+```powershell
+.\.venv\Scripts\python.exe main.py
+```
+
+The existing `main.py` path uses Flower's legacy `start_simulation()` API in the current code and may display deprecation warnings. The simulation can still complete in the current environment.
+
+A successful run should show:
+- Five communication rounds
+- Selected and excluded update identifiers
+- Clean accuracy and Attack Success Rate after rounds
+- A final training-completed message
+- Graphs saved in the `graphs/` folder, if graph generation completes
+
+Do not assume the malicious client was correctly excluded in every round merely because one update was excluded. Check the logs and validate against a baseline.
+
+## Run the dashboard
+
+The Streamlit dashboard provides a presentation interface for the simulation logs and metrics.
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run dashboard.py
+```
+
+Open the local URL shown in the terminal (usually `http://localhost:8501`).
+
+Dashboard functions may include:
+- Starting the simulation from the UI
+- Showing parsed clean accuracy and ASR by round
+- Displaying selected/excluded update identifiers
+- Showing generated graphs
+- Loading a previously saved log
+
+If the metrics are blank, confirm a log is loaded and that it contains lines like `Clean Accuracy: ...%` and `Attack Success Rate: ...%`.
+
+## Metrics
+
+- **Clean Accuracy:** fraction of ordinary test examples predicted correctly, expressed as a percentage.
+- **Attack Success Rate (ASR):** fraction of triggered test examples classified as the attacker's target label, expressed as a percentage.
+- **Krum-style update selection:** scores client updates using distances and selects a subset for aggregation. The implementation should be described as Krum-style unless it has been verified to match the original Krum or Multi-Krum algorithm precisely.
+
+## Latest example results
+
+Replace this section with the metrics from the exact run you are presenting. The latest dashboard log shared during project preparation reported:
+
+| Round | Clean accuracy | Attack success rate |
+|---:|---:|---:|
+| 1 | 96.43% | 0.41% |
+| 2 | 98.55% | 0.21% |
+| 3 | 98.94% | 0.59% |
+| 4 | 98.99% | 0.28% |
+| 5 | 99.16% | 1.45% |
+
+These are example results from one run, not guaranteed reproducible values. Training results can vary between runs.
+
+## Known limitations and next steps
+
+- The current Flower simulation path may emit deprecation warnings.
+- Krum-style filtering does not guarantee that the malicious client is detected in every round.
+- Update identifiers printed by Flower may not directly identify human-readable client numbers.
+- Reported metrics should be checked against a run without the defense.
+- Future work: run an undefended FedAvg baseline, repeat experiments with fixed seeds, vary the malicious-client ratio and poisoning rate, and report mean and standard deviation over multiple runs.
+
+## References to verify and include in the final report
+
+1. McMahan, B. et al. (2017). *Communication-Efficient Learning of Deep Networks from Decentralized Data.* AISTATS.
+2. Blanchard, P. et al. (2017). *Machine Learning with Adversaries: Byzantine Tolerant Gradient Descent.* NeurIPS.
+3. Bagdasaryan, E. et al. (2020). *How To Backdoor Federated Learning.* AISTATS.
+
+Verify citation details and format them according to your course requirements before submission.
+
+## Team
+
+- Team members: [Add names and IDs]
+- Faculty mentor: [Add name]
+- Course: DSE3170 — Project Based Learning-3
+- Institution: Manipal University Jaipur
