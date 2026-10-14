@@ -169,11 +169,4 @@ These are example results from one run, not guaranteed reproducible values. Trai
 2. Blanchard, P. et al. (2017). *Machine Learning with Adversaries: Byzantine Tolerant Gradient Descent.* NeurIPS.
 3. Bagdasaryan, E. et al. (2020). *How To Backdoor Federated Learning.* AISTATS.
 
-Verify citation details and format them according to your course requirements before submission.
 
-## Team
-
-- Team members: [Add names and IDs]
-- Faculty mentor: [Add name]
-- Course: DSE3170 — Project Based Learning-3
-- Institution: Manipal University Jaipur
