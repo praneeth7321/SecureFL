@@ -39,14 +39,15 @@ Each dataset writes `round_metrics.csv`, `classification_metrics.png`, and `atta
 
 ## Windows PowerShell quick start
 
-Install Git, Python 3.12, and [uv](https://docs.astral.sh/uv/getting-started/installation/) first. Keep the two uploaded ZIP files in your Downloads folder, or adjust the paths below. Allow at least 5 GB of free disk space.
+Install Git and Python 3.12 first. The commands below install `uv` through Python, so `uv` does not need to be on your PowerShell PATH. Keep the two uploaded ZIP files in your Downloads folder, or adjust the paths below. Allow at least 5 GB of free disk space.
 
 ```powershell
 git clone https://github.com/praneeth7321/SecureFL.git
 cd SecureFL
 py -3.12 scripts\prepare_data.py --ton-archive "$HOME\Downloads\archive.zip" --cic-archive "$HOME\Downloads\archive(1).zip"
-uv venv .venv --python 3.12
-uv pip install --python .venv\Scripts\python.exe --index https://download.pytorch.org/whl/cpu --index https://pypi.org/simple --index-strategy unsafe-best-match -r requirements.txt
+py -3.12 -m pip install --user uv
+py -3.12 -m uv venv .venv --python 3.12
+py -3.12 -m uv pip install --python .venv\Scripts\python.exe --index https://download.pytorch.org/whl/cpu --index https://pypi.org/simple --index-strategy unsafe-best-match -r requirements.txt
 $env:MPLBACKEND = "Agg"
 .\.venv\Scripts\python.exe main.py --data-dir data --output-dir results
 ```
