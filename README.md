@@ -36,3 +36,19 @@ MPLBACKEND=Agg /workspace/securefl-env/venv/bin/python main.py --data-dir data -
 Use `--datasets ton_iot` or `--datasets ciciot2023` to run one dataset, and `--rounds`, `--local-epochs`, `--max-rows-per-class`, or `--seed` to change experiment size and sampling. The default trains each client for three local epochs per round. The default runs both datasets for five rounds. Ray starts locally through Flower; no dashboard or web service is used.
 
 Each dataset writes `round_metrics.csv`, `classification_metrics.png`, and `attack_miss_rate.png` under its own output directory. The output root also contains `dataset_summary.csv` and `dataset_comparison.png` for the final-round comparison. Tables are printed to the terminal. Accuracy alone can hide missed attacks; review recall, F1, and attack miss rate together. The rejected Flower proxy ID is reported for diagnostics, but it is not a reliable proof of which logical client was malicious.
+
+## Windows PowerShell quick start
+
+Install Git, Python 3.12, and [uv](https://docs.astral.sh/uv/getting-started/installation/) first. Keep the two uploaded ZIP files in your Downloads folder, or adjust the paths below. Allow at least 5 GB of free disk space.
+
+```powershell
+git clone https://github.com/praneeth7321/SecureFL.git
+cd SecureFL
+py -3.12 scripts\prepare_data.py --ton-archive "$HOME\Downloads\archive.zip" --cic-archive "$HOME\Downloads\archive(1).zip"
+uv venv .venv --python 3.12
+uv pip install --python .venv\Scripts\python.exe --index https://download.pytorch.org/whl/cpu --index https://pypi.org/simple --index-strategy unsafe-best-match -r requirements.txt
+$env:MPLBACKEND = "Agg"
+.\.venv\Scripts\python.exe main.py --data-dir data --output-dir results
+```
+
+The run is finished when both five-round tables are printed. Open `results\dataset_summary.csv` and `results\dataset_comparison.png` for the overall comparison; each dataset also has its own CSV and graphs. If you already cloned the repository, use `git pull` in that checkout instead of cloning it again. If the second ZIP is missing, omit `--cic-archive`; the preparation script downloads the public Kaggle copy.
