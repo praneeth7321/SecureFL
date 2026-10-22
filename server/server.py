@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 from aggregation.secure_aggregation import aggregate_updates
 from detection.krum import select_suspicious_client
 from evaluation import metrics
-from models.cnn_model import CNNModel
+from models.traffic_model import TrafficModel
 
 
 class SecureFLStrategy(FedAvg):
@@ -28,17 +28,14 @@ class SecureFLStrategy(FedAvg):
 
     def __init__(
         self,
-        global_model: CNNModel,
+        global_model: TrafficModel,
         test_loader: DataLoader,
         device: torch.device,
         target_label: int,
-        trigger_size: int = 3,
         local_epochs: int = 1,
         num_malicious: int = 1,
     ) -> None:
         """Initialize the server strategy and central evaluation settings."""
-        if trigger_size <= 0:
-            raise ValueError("trigger_size must be greater than zero.")
         if local_epochs <= 0:
             raise ValueError("local_epochs must be greater than zero.")
         if num_malicious < 0:
@@ -48,7 +45,6 @@ class SecureFLStrategy(FedAvg):
         self.test_loader = test_loader
         self.device = device
         self.target_label = target_label
-        self.trigger_size = trigger_size
         self.local_epochs = local_epochs
         self.num_malicious = num_malicious
         self.round_history: list[dict[str, int | float | str]] = []
@@ -107,39 +103,14 @@ class SecureFLStrategy(FedAvg):
         self._set_model_parameters(aggregated_updates)
 
         training_loss = self._calculate_training_loss(results, rejected_index)
-        clean_accuracy = metrics.calculate_clean_accuracy(
-            self.global_model,
-            self.test_loader,
-            self.device,
-        )
-        attack_success_rate = metrics.calculate_asr(
-            self.global_model,
-            self.test_loader,
-            self.device,
-            self.target_label,
-            self.trigger_size,
-        )
+        scores = metrics.evaluate(self.global_model, self.test_loader, self.device)
 
-        self.round_history.append(
-            {
-                "round": server_round,
-                "rejected_client_id": rejected_client_id,
-                "clean_accuracy": clean_accuracy,
-                "training_loss": training_loss,
-                "asr": attack_success_rate,
-            }
-        )
-
-        print("\nGlobal Model Updated")
-        print(f"\nClean Accuracy : {clean_accuracy * 100:.2f} %")
-        print(f"\nAttack Success Rate : {attack_success_rate * 100:.2f} %")
-
-        return aggregated_parameters, {
-            "train_loss": training_loss,
-            "clean_accuracy": clean_accuracy,
-            "asr": attack_success_rate,
-            "rejected_client_id": rejected_client_id,
-        }
+        self.round_history.append({"round": server_round, "rejected_client_id": rejected_client_id,
+                                   "training_loss": training_loss, **scores})
+        print(f"Round {server_round}: accuracy={scores['accuracy']:.3f}, "
+              f"F1={scores['f1']:.3f}, attack miss rate={scores['attack_miss_rate']:.3f}")
+        return aggregated_parameters, {"train_loss": training_loss, **scores,
+                                       "rejected_client_id": rejected_client_id}
 
     def _fit_config(self, server_round: int) -> dict[str, Scalar]:
         """Create the local-training configuration sent to every client."""
@@ -147,14 +118,14 @@ class SecureFLStrategy(FedAvg):
         return {"local_epochs": self.local_epochs}
 
     def _get_model_parameters(self) -> NDArrays:
-        """Return the global CNN parameters in Flower's NumPy representation."""
+        """Return the global traffic model parameters in Flower's NumPy representation."""
         return [
             parameter.detach().cpu().numpy()
             for parameter in self.global_model.state_dict().values()
         ]
 
     def _set_model_parameters(self, parameters: NDArrays) -> None:
-        """Update the server-side CNN with aggregated NumPy parameters."""
+        """Update the server-side traffic model with aggregated NumPy parameters."""
         model_state = self.global_model.state_dict()
         if len(parameters) != len(model_state):
             raise ValueError("Received an unexpected number of model parameters.")

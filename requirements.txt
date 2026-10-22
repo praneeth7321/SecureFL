@@ -1,6 +1,5 @@
 flwr[simulation]==1.33.0
 torch==2.9.0
-torchvision==0.24.0
 numpy
 matplotlib
 pandas

@@ -1,4 +1,4 @@
-"""Honest Flower client implementation for local MNIST training."""
+"""Honest Flower client implementation for local IoT traffic training."""
 
 from collections import OrderedDict
 
@@ -8,15 +8,16 @@ from flwr.common import NDArrays, Scalar
 from torch import nn
 from torch.utils.data import DataLoader
 
-from models.cnn_model import CNNModel
+from models.traffic_model import TrafficModel
 
 
 class HonestClient(fl.client.NumPyClient):
-    """A standard Flower client that trains only on its local MNIST data."""
+    """A standard Flower client that trains only on its local IoT traffic data."""
 
     def __init__(
         self,
         train_loader: DataLoader,
+        input_features: int,
         client_id: int,
         device: torch.device,
         learning_rate: float = 0.001,
@@ -33,11 +34,11 @@ class HonestClient(fl.client.NumPyClient):
         self.train_loader = train_loader
         self.learning_rate = learning_rate
         self.local_epochs = local_epochs
-        self.model = CNNModel().to(self.device)
+        self.model = TrafficModel(input_features).to(self.device)
         self.loss_function = nn.CrossEntropyLoss()
 
     def get_parameters(self, config: dict[str, Scalar]) -> NDArrays:
-        """Return the current CNN parameters as NumPy arrays."""
+        """Return the current traffic model parameters as NumPy arrays."""
         del config
         return [
             parameter.detach().cpu().numpy()
@@ -45,7 +46,7 @@ class HonestClient(fl.client.NumPyClient):
         ]
 
     def set_parameters(self, parameters: NDArrays) -> None:
-        """Load Flower NumPy parameters into the local CNN model."""
+        """Load Flower NumPy parameters into the local traffic model model."""
         model_state = self.model.state_dict()
         if len(parameters) != len(model_state):
             raise ValueError("Received an unexpected number of model parameters.")
@@ -67,7 +68,7 @@ class HonestClient(fl.client.NumPyClient):
         parameters: NDArrays,
         config: dict[str, Scalar],
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
-        """Train the CNN on local data and return its updated parameters."""
+        """Train the traffic model on local data and return its updated parameters."""
         self.set_parameters(parameters)
         epochs = self._get_local_epochs(config)
         optimizer = torch.optim.Adam(
@@ -106,7 +107,7 @@ class HonestClient(fl.client.NumPyClient):
         parameters: NDArrays,
         config: dict[str, Scalar],
     ) -> tuple[float, int, dict[str, Scalar]]:
-        """Evaluate the CNN using the client's local dataset."""
+        """Evaluate the traffic model using the client's local dataset."""
         del config
         self.set_parameters(parameters)
         self.model.eval()

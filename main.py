@@ -1,110 +1,56 @@
-"""Command-line entry point for the SecureFL Flower simulation."""
+"""Flower simulation for binary intrusion detection on two IoT datasets."""
 
-from collections.abc import Callable
-
+import argparse
+from pathlib import Path
 import flwr as fl
 import torch
-from torch.utils.data import DataLoader
-
 from clients.client import HonestClient
 from clients.malicious_client import MaliciousClient
-from datasets.load_data import get_client_dataloaders, get_test_dataloader
-from graphs.plot_results import generate_graphs
-from models.cnn_model import CNNModel
+from datasets.load_data import DATASETS, load_traffic_data
+from graphs.plot_results import generate_comparison, generate_graphs
+from models.traffic_model import TrafficModel
 from server.server import SecureFLStrategy
 
 
-NUM_CLIENTS: int = 5
-HONEST_CLIENT_IDS: tuple[int, ...] = (0, 1, 2, 3)
-MALICIOUS_CLIENT_ID: int = 4
-ROUNDS: int = 5
-LOCAL_EPOCHS: int = 1
-LEARNING_RATE: float = 0.001
-BATCH_SIZE: int = 32
-TARGET_LABEL: int = 0
-POISON_RATIO: float = 0.30
-TRIGGER_SIZE: int = 3
-
-
-def create_client_fn(
-    client_dataloaders: dict[int, DataLoader],
-    device: torch.device,
-) -> Callable[[str], fl.client.Client]:
-    """Create Flower clients with fixed honest and malicious roles."""
-
-    def client_fn(client_id_text: str) -> fl.client.Client:
-        """Return the Flower client corresponding to a simulation client ID."""
-        client_id = int(client_id_text)
-        if client_id not in client_dataloaders:
-            raise ValueError(f"No DataLoader exists for client {client_id}.")
-
-        train_loader = client_dataloaders[client_id]
-        if client_id == MALICIOUS_CLIENT_ID:
-            client = MaliciousClient(
-                train_loader=train_loader,
-                client_id=client_id,
-                device=device,
-                poison_ratio=POISON_RATIO,
-                target_label=TARGET_LABEL,
-                trigger_size=TRIGGER_SIZE,
-                learning_rate=LEARNING_RATE,
-                local_epochs=LOCAL_EPOCHS,
-            )
-        elif client_id in HONEST_CLIENT_IDS:
-            client = HonestClient(
-                train_loader=train_loader,
-                client_id=client_id,
-                device=device,
-                learning_rate=LEARNING_RATE,
-                local_epochs=LOCAL_EPOCHS,
-            )
-        else:
-            raise ValueError(f"Client {client_id} has no configured role.")
-
-        return client.to_client()
-
-    return client_fn
-
-
 def main() -> None:
-    """Initialize data, clients, strategy, and the Flower simulation."""
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    client_dataloaders = get_client_dataloaders(batch_size=BATCH_SIZE)
-    test_dataloader = get_test_dataloader(batch_size=BATCH_SIZE)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-dir", type=Path, default=Path("data"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results"))
+    parser.add_argument("--datasets", nargs="+", choices=DATASETS, default=list(DATASETS))
+    parser.add_argument("--rounds", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--local-epochs", type=int, default=3)
+    parser.add_argument("--max-rows-per-class", type=int, default=5000)
+    args = parser.parse_args()
+    if args.rounds < 1 or args.local_epochs < 1:
+        parser.error("--rounds and --local-epochs must be positive")
+    torch.set_num_threads(1)
+    torch.manual_seed(args.seed)
+    device = torch.device("cpu")
+    histories = {}
+    for dataset in args.datasets:
+        data = load_traffic_data(dataset, args.data_dir, max_rows_per_class=args.max_rows_per_class,
+                                 seed=args.seed)
+        print(f"{dataset}: {data.train_size} training, {data.test_size} test, {data.input_features} features", flush=True)
+        strategy = SecureFLStrategy(global_model=TrafficModel(data.input_features),
+                                    test_loader=data.test, device=device,
+                                    target_label=0, local_epochs=args.local_epochs, num_malicious=1)
 
-    strategy = SecureFLStrategy(
-        global_model=CNNModel(),
-        test_loader=test_dataloader,
-        device=device,
-        target_label=TARGET_LABEL,
-        trigger_size=TRIGGER_SIZE,
-        local_epochs=LOCAL_EPOCHS,
-        num_malicious=1,
-    )
-    client_fn = create_client_fn(client_dataloaders, device)
-    client_resources = {
-        "num_cpus": 1,
-        "num_gpus": 1.0 if device.type == "cuda" else 0.0,
-    }
+        def client_fn(cid: str) -> fl.client.Client:
+            client_id = int(cid)
+            torch.manual_seed(args.seed + client_id)
+            common = dict(train_loader=data.clients[client_id], input_features=data.input_features,
+                          client_id=client_id, device=device)
+            client = (MaliciousClient(**common, poison_ratio=0.3, target_label=0)
+                      if client_id == 4 else HonestClient(**common))
+            return client.to_client()
 
-    print("========================================")
-    print("SecureFL Started")
-    print("========================================")
-
-    fl.simulation.start_simulation(
-        client_fn=client_fn,
-        num_clients=NUM_CLIENTS,
-        config=fl.server.ServerConfig(num_rounds=ROUNDS),
-        strategy=strategy,
-        client_resources=client_resources,
-    )
-
-    generate_graphs(strategy.round_history)
-
-    print("========================================")
-    print("Training Finished")
-    print("Graphs saved inside graphs/")
-    print("========================================")
+        fl.simulation.start_simulation(client_fn=client_fn, num_clients=5,
+                                       config=fl.server.ServerConfig(num_rounds=args.rounds),
+                                       strategy=strategy, client_resources={"num_cpus": 1})
+        generate_graphs(strategy.round_history, dataset, args.output_dir / dataset)
+        histories[dataset] = strategy.round_history
+    generate_comparison(histories, args.output_dir)
 
 
 if __name__ == "__main__":

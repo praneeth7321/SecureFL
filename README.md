@@ -1,239 +1,30 @@
-# SecureFL: Detecting Backdoor Attacks using Federated Learning
+# SecureFL: Federated IoT intrusion detection
 
-## Project Overview
+SecureFL uses Flower to train a binary intrusion detector on **TON_IoT** and **CICIoT2023** separately. Each run partitions traffic among five simulated clients. Four clients train on clean labels; client 4 flips a fraction of attack labels to benign. The server scores model updates with Krum, excludes the least consistent update, aggregates the other four, and evaluates on held-out traffic. This is a label-poisoning experiment, not an image-trigger backdoor experiment. The attacker’s effect is measured as the attack miss rate, alongside accuracy, precision, recall, and F1.
 
-SecureFL is a command-line Python application that demonstrates how a backdoor attack can affect a Federated Learning (FL) system and how Krum-based robust aggregation can reduce the impact of an unusual client update.
+## Data
 
-The project trains one shared Convolutional Neural Network (CNN) on the MNIST handwritten-digit dataset through Flower. Five simulated clients participate in every training round: four honest clients and one malicious client. The malicious client inserts a small white-square trigger into some of its local MNIST images and changes their labels to a configurable target digit.
+The supplied TON_IoT network CSV goes in `data/ton_iot/`. The CICIoT2023 Kaggle mirror used for validation is https://www.kaggle.com/datasets/himadri07/ciciot2023; its CSV files go in `data/ciciot2023/train/train.csv` and `data/ciciot2023/test/test.csv` (the supplied validation file is optional). Dataset files are ignored by Git. TON_IoT CSVs need a binary `label` column containing `0`/`1` or benign/attack. CICIoT2023 CSVs need a `label` column where `BenignTraffic` is benign and every other label is an attack. The loader uses numeric traffic features, excludes identifiers and known label columns, and samples up to 5,000 rows per class for training. CICIoT2023 uses its supplied train/test split and a held-out test sample of up to 1,000 rows per class. TON_IoT uses a stratified 80/20 split after sampling. Missing-value imputation and quantile scaling are fitted only on training records. Each dataset gets its own model because their feature sets differ.
 
-The server applies Krum scoring to the received client model updates, rejects the least-consistent update for that round, averages the remaining updates, and evaluates the updated global model.
+For the datasets validated in this workspace, the TON_IoT CSV has SHA-256 `26ddc513552de36de6428b2e578efaed2b57504c716dfba847cc0109a64e1974` and the Kaggle ZIP has SHA-256 `793b212d1dc40973068d06cec4d0676eaf7f17436a859dfa522303e199c7ea5a`. These identify the exact files used for the reported results.
 
-## Problem Statement
+**Check your source export before running:** numeric codes that encode attack labels under other column names must be removed from the input files. The loader cannot identify arbitrary label leakage. For a reproducible run, keep a fixed export and record its source and checksum externally.
 
-Federated Learning allows multiple clients to train a shared model without pooling their raw data on one central server. However, a malicious participant can poison its local training data so that the global model behaves normally on clean data but predicts an attacker-chosen label when a visual trigger is present.
+## Install and run
 
-This project studies that targeted backdoor threat on MNIST and demonstrates a simple Krum-based robust aggregation defense.
+Python 3.12 was used for validation. With `uv` installed, create a CPU environment outside the checkout:
 
-## Objectives
-
-- Simulate Federated Learning with Flower 1.33 and five clients.
-- Train a simple PyTorch CNN on client-partitioned MNIST data.
-- Create a targeted backdoor attack using a small white-square image trigger.
-- Use Krum to score client model updates by their consistency with other updates.
-- Reject the least-consistent update and aggregate the remaining accepted updates.
-- Measure clean test accuracy, training loss, attack success rate (ASR), and the rejected client ID.
-- Save accuracy and ASR graphs for each training run.
-
-## System Architecture
-
-```text
-                         +-----------------------+
-                         |    Flower Server      |
-                         | Global CNN + Krum +   |
-                         | Filtered Aggregation  |
-                         +-----------+-----------+
-                                     |
-                         Global CNN model weights
-                                     |
-          +--------------------------+--------------------------+
-          |             |             |             |          |
-          v             v             v             v          v
-     Client 0      Client 1      Client 2      Client 3     Client 4
-      Honest        Honest        Honest        Honest      Malicious
-          |             |             |             |          |
-      Clean MNIST   Clean MNIST   Clean MNIST   Clean MNIST  Clean + poisoned
-          |             |             |             |       MNIST with trigger
-          +-------------+-------------+-------------+----------+
-                                     |
-                         Local CNN model updates
-                                     |
-                         +-----------v-----------+
-                         | Krum scores updates    |
-                         | Reject one update      |
-                         | Average accepted four  |
-                         +-----------+-----------+
-                                     |
-                              Updated global CNN
-                                     |
-                    Clean accuracy, loss, ASR, graphs
+```bash
+uv venv /workspace/securefl-env/venv --python python3.12
+uv pip install --python /workspace/securefl-env/venv/bin/python --index https://download.pytorch.org/whl/cpu --index https://pypi.org/simple --index-strategy unsafe-best-match -r requirements.txt
 ```
 
-## Folder Structure
+From the project root:
 
-```text
-SecureFL/
-├── models/
-├── datasets/
-├── clients/
-├── attacks/
-├── detection/
-├── aggregation/
-├── server/
-├── evaluation/
-├── graphs/
-│   ├── accuracy_vs_round.png
-│   └── asr_vs_round.png
-├── main.py
-├── requirements.txt
-└── README.md
+```bash
+MPLBACKEND=Agg /workspace/securefl-env/venv/bin/python main.py --data-dir data --output-dir results
 ```
 
-## Technologies Used
+Use `--datasets ton_iot` or `--datasets ciciot2023` to run one dataset, and `--rounds`, `--local-epochs`, `--max-rows-per-class`, or `--seed` to change experiment size and sampling. The default trains each client for three local epochs per round. The default runs both datasets for five rounds. Ray starts locally through Flower; no dashboard or web service is used.
 
-- Python 3.14
-- Flower 1.33 for Federated Learning simulation
-- PyTorch for CNN training
-- torchvision MNIST for dataset download and preprocessing
-- NumPy for numerical update processing
-- Pandas for round-level experiment records
-- Scikit-learn for permitted evaluation support
-- Matplotlib for accuracy and ASR graphs
-
-## Installation Steps
-
-1. Open a terminal in the `SecureFL` project folder.
-2. Confirm that Python 3.14 is available:
-
-   ```powershell
-   python --version
-   ```
-
-3. Create and activate a virtual environment:
-
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   ```
-
-4. Install the pinned project dependencies:
-
-   ```powershell
-   python -m pip install --upgrade pip
-   python -m pip install -r requirements.txt
-   ```
-
-## How to Run
-
-Run the project from the root `SecureFL` directory:
-
-```powershell
-python main.py
-```
-
-The first run downloads the MNIST dataset through torchvision. The program then runs the configured number of federated training rounds and saves graphs in the `graphs/` folder.
-
-## Workflow
-
-```text
-Initialize Flower Server
-        ↓
-Create 5 Clients
-        ↓
-Distribute Global CNN
-        ↓
-Honest Clients Train
-        ↓
-Malicious Client Injects Trigger
-        ↓
-Clients Send Updates
-        ↓
-Server Runs Krum
-        ↓
-Reject Suspicious Update
-        ↓
-Aggregate Remaining Updates
-        ↓
-Update Global Model
-        ↓
-Evaluate Accuracy & ASR
-        ↓
-Save Graphs
-```
-
-## Krum Explanation
-
-Krum is a robust aggregation algorithm, not a malicious-client detector. It computes scores for client updates using pairwise distances and selects updates that are most consistent with the majority.
-
-In this project, the server calculates a Krum score for each of the five submitted model updates. The update with the least-consistent score is rejected before aggregation, while the other four updates are averaged. For evaluation purposes, the rejected update is treated as the suspected malicious update and compared with the known malicious client, Client 4.
-
-Therefore, a rejected Client 4 is a successful defensive indication in this controlled simulation, but Krum itself does not prove that a client is malicious.
-
-## Backdoor Attack Explanation
-
-The malicious client, Client 4, performs a targeted data-poisoning attack during its local training:
-
-1. It selects a configurable fraction of its MNIST training images.
-2. It adds a small white square to a fixed corner of each selected image.
-3. It changes each selected image label to a configurable target class, such as digit `0`.
-4. It trains on a mixture of clean and poisoned images.
-
-The goal is for the global model to retain useful clean-digit accuracy while classifying triggered images as the target label.
-
-## Robust Aggregation using Krum
-
-The server uses Krum scores to identify the update that is least consistent with the other client updates in the current round. It rejects that selected update and averages only the remaining four accepted updates to produce the next global model.
-
-This is a simplified robust aggregation process intended to limit the influence of an unusual update. It does not use encryption or Flower SecAgg/SecAgg+.
-
-## Evaluation Metrics
-
-- **Clean Accuracy:** Percentage of clean MNIST test images classified correctly by the global CNN.
-- **Training Loss:** The loss reported from local client training for each federated round.
-- **Attack Success Rate (ASR):** Percentage of triggered test images classified as the attacker’s configured target label.
-- **Rejected Client ID:** The client update rejected by Krum in that round, compared with the known malicious client ID, `4`.
-
-## Expected Output
-
-The console prints clear progress logs for every round, including client roles, local training completion, Krum processing, the rejected client ID, clean accuracy, and ASR. A typical round summary is:
-
-```text
-====================================================
-Round 1
-====================================================
-
-Client 0 : Honest
-Training Completed
-
-Client 1 : Honest
-Training Completed
-
-Client 2 : Honest
-Training Completed
-
-Client 3 : Honest
-Training Completed
-
-Client 4 : Malicious
-Trigger Injection Performed
-
-Receiving Client Updates...
-
-Running Krum...
-
-Rejected Client : 4
-
-Aggregating Honest Updates...
-
-Global Model Updated
-
-Clean Accuracy : xx.xx %
-
-Attack Success Rate : xx.xx %
-====================================================
-```
-
-After training, the application saves only these graphs:
-
-```text
-graphs/accuracy_vs_round.png
-graphs/asr_vs_round.png
-```
-
-## Future Improvements
-
-- Compare Krum with FedAvg, Median, Trimmed Mean, and Multi-Krum.
-- Support different trigger positions, shapes, and target classes.
-- Experiment with IID and non-IID client data partitions.
-- Evaluate different poison ratios and multiple malicious clients.
-- Add cryptographic secure aggregation as a separate, advanced extension.
-- Save experiment configurations and round metrics for repeated comparisons.
+Each dataset writes `round_metrics.csv`, `classification_metrics.png`, and `attack_miss_rate.png` under its own output directory. The output root also contains `dataset_summary.csv` and `dataset_comparison.png` for the final-round comparison. Tables are printed to the terminal. Accuracy alone can hide missed attacks; review recall, F1, and attack miss rate together. The rejected Flower proxy ID is reported for diagnostics, but it is not a reliable proof of which logical client was malicious.
