@@ -10,6 +10,14 @@ For the datasets validated in this workspace, the TON_IoT CSV has SHA-256 `26ddc
 
 **Check your source export before running:** numeric codes that encode attack labels under other column names must be removed from the input files. The loader cannot identify arbitrary label leakage. For a reproducible run, keep a fixed export and record its source and checksum externally.
 
+To prepare the files on your own computer, use the two ZIP archives supplied for this project:
+
+```bash
+python3.12 scripts/prepare_data.py --ton-archive /path/to/archive.zip --cic-archive "/path/to/archive(1).zip"
+```
+
+If you do not have the second ZIP locally, omit `--cic-archive` to download the public Kaggle copy. This step needs about 3 GB of free disk space.
+
 ## Install and run
 
 Python 3.12 was used for validation. With `uv` installed, create a CPU environment outside the checkout:
