@@ -39,17 +39,10 @@ Each dataset writes `round_metrics.csv`, `classification_metrics.png`, and `atta
 
 ## Windows PowerShell quick start
 
-Install Git and Python 3.12 first. The commands below install `uv` through Python, so `uv` does not need to be on your PowerShell PATH. Keep the two uploaded ZIP files in your Downloads folder, or adjust the paths below. Allow at least 5 GB of free disk space.
+Install Git and Python 3.12 first. Put `archive.zip` (TON_IoT) and, if available, `archive(1).zip` (CICIoT2023) in your Downloads folder. Allow at least 5 GB of free disk space. Open the project folder and double-click **`run.cmd`**, or run this one command in PowerShell:
 
 ```powershell
-git clone https://github.com/praneeth7321/SecureFL.git
-cd SecureFL
-py -3.12 scripts\prepare_data.py --ton-archive "$HOME\Downloads\archive.zip" --cic-archive "$HOME\Downloads\archive(1).zip"
-py -3.12 -m pip install --user uv
-py -3.12 -m uv venv .venv --python 3.12
-py -3.12 -m uv pip install --python .venv\Scripts\python.exe --index https://download.pytorch.org/whl/cpu --index https://pypi.org/simple --index-strategy unsafe-best-match -r requirements.txt
-$env:MPLBACKEND = "Agg"
-.\.venv\Scripts\python.exe main.py --data-dir data --output-dir results
+.\run.cmd
 ```
 
-The run is finished when both five-round tables are printed. Open `results\dataset_summary.csv` and `results\dataset_comparison.png` for the overall comparison; each dataset also has its own CSV and graphs. If you already cloned the repository, use `git pull` in that checkout instead of cloning it again. If the second ZIP is missing, omit `--cic-archive`; the preparation script downloads the public Kaggle copy.
+The launcher installs missing dependencies, prepares missing dataset files, and runs both five-round experiments. It reuses an existing `.venv` and prepared data on later runs. If the second ZIP is missing, preparation downloads the public Kaggle copy. Open `results\dataset_summary.csv` and `results\dataset_comparison.png` for the overall comparison; each dataset also has its own CSV and graphs. If you already cloned the repository, run `git pull` in that checkout to get the launcher.
